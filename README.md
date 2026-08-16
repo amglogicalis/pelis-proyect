@@ -67,17 +67,21 @@ node stream.js "magnet:?xt=urn:btih:..."
    ```bash
    rclone config
    ```
-2. Sigue las opciones del asistente interactivo:
-   * Escribe `n` (New remote).
-   * **name:** `gdrive` *(debe llamarse exactamente gdrive)*.
-   * **Storage:** busca y escribe `drive` (Google Drive).
-   * **client_id / client_secret:** deja en blanco (presiona Enter dos veces).
-   * **scope:** escribe `1` (Full access).
-   * **root_folder_id / service_account_file:** deja en blanco (presiona Enter).
-   * **Edit advanced config:** `n` (No).
-   * **Use web browser to automatically authenticate:** `y` (abrirá el navegador; inicia sesión y autoriza).
-   * **Configure this as a Shared Drive:** `n`.
-   * Confirma con `y` y luego `q` para salir.
+2. Sigue las opciones del asistente interactivo paso a paso:
+   * **n/s/q>** Escribe `n` (New remote).
+   * **name>** `gdrive` *(debe llamarse exactamente gdrive)*.
+   * **Storage>** Escribe `drive` (Google Drive).
+   * **client_id>** Deja en blanco y presiona **Enter**.
+   * **Continue using the shared client_id anyway?** 👉 **Escribe `y`** (Yes) y presiona Enter *(esto evita tener que crear claves en Google Cloud Console)*.
+   * **client_secret>** Deja en blanco y presiona **Enter**.
+   * **scope>** Escribe `1` (Full access: `drive`).
+   * **service_account_file>** Deja en blanco y presiona **Enter**.
+   * **Edit advanced config?** Escribe `n` (No) y presiona **Enter**.
+   * **Use web browser to automatically authenticate?** Escribe `y` y presiona **Enter**.
+     *(Se abrirá el navegador; inicia sesión en Google y pulsa "Permitir")*.
+   * **Configure this as a Shared Drive (Team Drive)?** Escribe `n`.
+   * **Keep this "gdrive" remote?** Escribe `y`.
+   * **e/n/d/r/c/s/q>** Escribe `q` para salir del asistente.
 
 Una vez configurado, ya puedes usar:
 ```bash
