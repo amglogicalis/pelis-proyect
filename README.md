@@ -1,145 +1,208 @@
-# 🎬 pelis-proyect
+# 🎬 Pelis-Proyect: Manual Técnico y Guía de Uso
 
-Sistema de streaming P2P efímero y cliente Cloud bajo demanda para PC, móvil (Termux) y servidores Cloud (Hugging Face Spaces / Docker).
-
-Permite reproducir vídeos directamente por HTTP en tiempo real en VLC, MPV o navegador web sin esperar a la descarga completa, con **selector interactivo de archivos**, **Auto-Purge por defecto** y soporte para almacenamiento de objetos **Rolla** y **Google Drive**.
+> **Motor de Streaming P2P Efímero y Puente de Almacenamiento Cloud bajo demanda para PC, Móvil (Termux) y Servidores Cloud.**
 
 ---
 
-## 🌟 Características Principales
+## 📌 1. Visión General y Arquitectura
 
-- ⚡ **Streaming Secuencial en Tiempo Real**: Visualización inmediata por HTTP sin esperar a la descarga total.
-- 🎯 **Estrategia B - Selector Interactivo**: Si el torrent contiene varios archivos (series/packs), el sistema inspecciona los metadatos y te permite elegir exactamente el capítulo que deseas.
-- 🧹 **Estrategia C - Auto-Purge por Defecto**: Todos los datos descargados en el búfer temporal se destruyen automáticamente al cerrar la sesión (`Ctrl+C` o fin del reproductor), dejando 0 bytes residuales.
-- 📦 **Estrategia A - Rolla Storage Engine (`--rolla`)**: Permite subir el archivo procesado a la CDN inmutable de GitHub Releases mediante fragmentación automática (*chunking*).
-- ☁️ **Soporte Google Drive (`--drive`)**: Sube a tu cuenta de Google Drive usando Rclone a máxima velocidad.
-- 🚀 **Soporte Cloud / Hugging Face Spaces**: Incluye `server.js` con interfaz web lista para desplegar gratis en Hugging Face Spaces (2 vCPU / 16 GB RAM).
+**Pelis-Proyect** es una solución diseñada para reproducir o transferir contenido multimedia a partir de enlaces Magnet / Torrent sin saturar el almacenamiento permanente de tus dispositivos.
+
+```
+                     ┌──────────────────────────────────────────────┐
+                     │          Red P2P (BitTorrent Engine)         │
+                     └──────────────────────┬───────────────────────┘
+                                            │
+                                (Descarga Secuencial)
+                                            ▼
+                     ┌──────────────────────────────────────────────┐
+                     │     Búfer Temporal Efímero (Auto-Purge)      │
+                     └──────┬───────────────────┬───────────────────┘
+                            │                   │
+         [ Modo Streaming ] │                   │ [ Modo Persistencia ]
+                            ▼                   ▼
+    ┌──────────────────────────────┐     ┌───────────────────────────────────┐
+    │  Servidor HTTP en Tiempo Real│     │  Motores de Almacenamiento Cloud  │
+    │  (VLC / MPV / Web Player)    │     │  - Rolla Storage Engine (GitHub)  │
+    │  URL: http://127.0.0.1:8000  │     │  - Google Drive (vía Rclone)      │
+    └──────────────────────────────┘     └───────────────────────────────────┘
+```
+
+### 🌟 Pilares Fundamentales:
+1. **Estrategia A (Rolla Storage Engine)**: Fragmentación automática (*chunking*) y almacenamiento inmutable a coste $0 sobre GitHub Releases vía `terra-rolla`.
+2. **Estrategia B (Selector Interactivo)**: Inspecciona los metadatos del torrent y te permite elegir qué archivo o episodio ver antes de iniciar la descarga.
+3. **Estrategia C (Auto-Purge por Defecto)**: Al terminar la sesión o pulsar `Ctrl+C`, se purgan todos los fragmentos temporales, dejando **0 bytes residuales** en disco.
+4. **Modo Google Drive**: Subida rápida de archivos procesados a tu cuenta de Google Drive mediante Rclone.
+5. **Servidor Cloud Multiplataforma**: Incluye interfaz web y endpoints REST listos para desplegar gratis en **Hugging Face Spaces** o cualquier servidor VPS.
 
 ---
 
-## 🚀 Instalación y Dependencias
+## 🚀 2. Instalación y Requisitos
 
-### 1. Dependencias Base
-* **Node.js** (v18 o superior)
-* **Git**
-* **Rclone** (Opcional, solo requerido para el modo `--drive`):
-  * En Windows: `winget install Rclone.Rclone` o desde [rclone.org](https://rclone.org/)
-  * En Termux / Linux: `pkg install rclone` o `sudo apt install rclone`
+### Requisitos Previos
+* **Node.js** (v18, v20, v22 o v24).
+* **Git**.
+* **Rclone** *(Opcional, solo requerido si vas a usar el modo `--drive`)*.
 
-### 2. Clonar e Instalar
+### Clonar e Instalar
 ```bash
 git clone https://github.com/amglogicalis/pelis-proyect.git
 cd pelis-proyect
 npm install
 ```
+*(Durante el `npm install`, el script `patch-deps.js` se ejecutará automáticamente para garantizar compatibilidad con Node 22/24).*
 
 ---
 
-## 💻 Modos de Uso
+## 📖 3. Tabla Completa de Flags y Parámetros
 
-### 1. Modo Interactivo (CLI Universal - PC / Termux)
+| Flag / Parámetro | Argumento | Valor por Defecto | Descripción |
+| :--- | :---: | :---: | :--- |
+| **`<magnet_link>`** | `string` | *(Requerido)* | Enlace magnet o ruta al archivo `.torrent`. |
+| **`--select`** | `<índice>` \| `all` | `Selector interactivo` | Especifica el índice del archivo a procesar (ej. `--select 0`). Si no se indica, abre el menú interactivo. |
+| **`--list`** | - | `false` | Muestra la lista de todos los archivos del torrent con sus tamaños en MB/GB y finaliza. |
+| **`--vlc`** | - | `false` | Abre automáticamente el reproductor multimedia VLC en tu PC. |
+| **`--mpv`** | - | `false` | Abre automáticamente el reproductor multimedia MPV en tu PC. |
+| **`--port`** | `<número>` | `8000` | Puerto en el que se expone el servidor HTTP local para streaming. |
+| **`--keep`** | - | `false` | Desactiva el Auto-Purge (conserva los archivos descargados en la carpeta temporal). |
+| **`--rolla`** | - | `false` | Descarga el archivo seleccionado y lo sube al motor de objetos **Rolla Storage**. |
+| **`--ball`** | `<nombre>` | `pelis-stream` | Nombre de la Rolla-Ball (Bucket en GitHub Releases) donde se guardará el archivo. |
+| **`--drive`** | - | `false` | Sube el archivo procesado a tu cuenta de Google Drive en la carpeta `Pelis-Stream`. |
+| **`-h, --help`** | - | - | Muestra la ayuda de comandos en la terminal. |
+
+---
+
+## 🎯 4. Recetas Prácticas de Uso
+
+### Receta 1: Modo Interactivo (Recomendado para Series y Packs)
+Muestra la lista de archivos con sus tamaños y te pregunta qué capítulo o vídeo deseas reproducir:
 ```bash
 node stream.js "magnet:?xt=urn:btih:..."
 ```
-> *Si el torrent contiene varios archivos, te mostrará la lista con sus tamaños y te preguntará cuál reproducir.*
-
-### 2. Flags y Opciones Directas
-
-| Flag | Descripción |
-| :--- | :--- |
-| `--select <idx>` | Selecciona directamente el índice del archivo sin preguntar (ej: `--select 0`). |
-| `--vlc` | Abre automáticamente el stream en el reproductor VLC (PC). |
-| `--mpv` | Abre automáticamente el stream en el reproductor MPV (PC). |
-| `--port <num>` | Cambia el puerto HTTP del servidor local (por defecto `8000`). |
-| `--list` | Muestra la lista de archivos con sus tamaños en MB/GB y sale. |
-| `--keep` | Desactiva el auto-purge y conserva los archivos descargados. |
-| `--rolla` | Descarga y sube el archivo a Rolla Storage Engine (GitHub Releases). |
-| `--ball <nombre>` | Especifica el nombre de la Rolla-Ball / Bucket (por defecto `pelis-stream`). |
-| `--drive` | Sube el archivo descargado a Google Drive en la carpeta `Pelis-Stream`. |
 
 ---
 
-## ⚙️ Configuración de Almacenamiento
-
-### A. Configurar Google Drive (`--drive`) con Rclone
-
-1. Ejecuta en tu terminal:
-   ```bash
-   rclone config
-   ```
-2. Sigue las opciones del asistente interactivo paso a paso:
-   * **n/s/q>** Escribe `n` (New remote).
-   * **name>** `gdrive` *(debe llamarse exactamente gdrive)*.
-   * **Storage>** Escribe `drive` (Google Drive).
-   * **client_id>** Deja en blanco y presiona **Enter**.
-   * **Continue using the shared client_id anyway?** 👉 **Escribe `y`** (Yes) y presiona Enter *(esto evita tener que crear claves en Google Cloud Console)*.
-   * **client_secret>** Deja en blanco y presiona **Enter**.
-   * **scope>** Escribe `1` (Full access: `drive`).
-   * **service_account_file>** Deja en blanco y presiona **Enter**.
-   * **Edit advanced config?** Escribe `n` (No) y presiona **Enter**.
-   * **Use web browser to automatically authenticate?** Escribe `y` y presiona **Enter**.
-     *(Se abrirá el navegador; inicia sesión en Google y pulsa "Permitir")*.
-   * **Configure this as a Shared Drive (Team Drive)?** Escribe `n`.
-   * **Keep this "gdrive" remote?** Escribe `y`.
-   * **e/n/d/r/c/s/q>** Escribe `q` para salir del asistente.
-
-Una vez configurado, ya puedes usar:
+### Receta 2: Ver Directamente en VLC en tu PC
+Inicia la reproducción instantánea en VLC sin abrir menús ni navegadores:
 ```bash
-node stream.js "magnet:?..." --select 0 --drive
+node stream.js "magnet:?xt=urn:btih:..." --select 0 --vlc
 ```
 
 ---
 
-### B. Configurar Rolla Storage Engine (`--rolla`)
+### Receta 3: Streaming a Móvil, Tablet o Smart TV (Red Local)
+1. Inicia el servidor especificando el puerto:
+   ```bash
+   node stream.js "magnet:?xt=urn:btih:..." --select 0 --port 8000
+   ```
+2. En tu móvil o Smart TV (conectado a la misma red WiFi), abre la app de **VLC** > **"Abrir ubicación de red"** e introduce:
+   ```
+   http://IP_DE_TU_PC:8000
+   ```
+   *(Ejemplo: `http://192.168.1.50:8000`)*.
 
-Requiere un Personal Access Token (PAT) de GitHub con permisos de `repo`:
+---
+
+### Receta 4: Subir a Rolla Storage Engine (GitHub Releases CDN)
+Descarga el archivo a velocidad máxima, lo divide en fragmentos automáticos (*chunks*) y lo sube a tu almacenamiento inmutable:
 
 ```powershell
 # En Windows (PowerShell)
-$env:GITHUB_TOKEN = "tu_token_de_github"
-node stream.js "magnet:?..." --select 0 --rolla --ball "peliculas-hd"
+$env:GITHUB_TOKEN = "tu_personal_access_token"
+node stream.js "magnet:?xt=urn:btih:..." --select 0 --rolla --ball "peliculas-hd"
 ```
 
 ```bash
 # En Linux / Termux / macOS
-export GITHUB_TOKEN="tu_token_de_github"
-node stream.js "magnet:?..." --select 0 --rolla --ball "peliculas-hd"
+export GITHUB_TOKEN="tu_personal_access_token"
+node stream.js "magnet:?xt=urn:btih:..." --select 0 --rolla --ball "peliculas-hd"
 ```
 
 ---
 
-## 📱 Uso en Android con Termux
+### Receta 5: Subir a Google Drive vía Rclone
+Descarga el vídeo y lo transfiere a tu Google Drive en la carpeta `Pelis-Stream`, purgando el disco local al finalizar:
+```bash
+node stream.js "magnet:?xt=urn:btih:..." --select 0 --drive
+```
 
-1. **Instalación inicial:**
+---
+
+### Receta 6: Solo Inspeccionar Contenido (`--list`)
+Muestra el árbol de archivos con sus tamaños exactos sin iniciar descarga ni streaming:
+```bash
+node stream.js "magnet:?xt=urn:btih:..." --list
+```
+
+---
+
+## ⚙️ 5. Guías de Configuración Paso a Paso
+
+### A. Configuración de Google Drive (`rclone config`)
+1. Ejecuta en tu terminal:
    ```bash
-   pkg update && pkg install nodejs-lts git
+   rclone config
+   ```
+2. Responde al asistente con los siguientes valores:
+
+| Pregunta de Rclone | Valor a Introducir | Explicación |
+| :--- | :--- | :--- |
+| `n/s/q>` | **`n`** | Crear nuevo remote. |
+| `name>` | **`gdrive`** | *(Debe llamarse exactamente `gdrive`)*. |
+| `Storage>` | **`drive`** | Selecciona Google Drive. |
+| `client_id>` | **Pulsa Enter** | Dejar vacío. |
+| `Continue using the shared client_id anyway? y/n>` | 👉 **`y`** | **Escribe `y`** para usar la autenticación automática sin configurar Google Cloud. |
+| `client_secret>` | **Pulsa Enter** | Dejar vacío. |
+| `scope>` | **`1`** | Full access (`drive`). |
+| `service_account_file>` | **Pulsa Enter** | Dejar vacío. |
+| `Edit advanced config? y/n>` | **`n`** | No. |
+| `Use web browser to automatically authenticate? y/n>` | **`y`** | Abre el navegador para iniciar sesión y autorizar. |
+| `Configure this as a Shared Drive? y/n>` | **`n`** | No. |
+| `Keep this "gdrive" remote? y/e/d>` | **`y`** | Confirmar. |
+| `e/n/d/r/c/s/q>` | **`q`** | Salir del asistente. |
+
+---
+
+### B. Configuración de Rolla Storage Engine
+1. Genera un **Personal Access Token (Classic)** en GitHub (*Settings > Developer settings > Personal access tokens*) con permiso `repo`.
+2. Establece la variable `GITHUB_TOKEN` antes de ejecutar con `--rolla`.
+
+---
+
+### C. Uso en Dispositivos Móviles (Android con Termux)
+1. **Instalar paquetes en Termux:**
+   ```bash
+   pkg update && pkg install nodejs-lts git rclone
+   ```
+2. **Clonar e iniciar:**
+   ```bash
    git clone https://github.com/amglogicalis/pelis-proyect.git
    cd pelis-proyect
    npm install
-   ```
-
-2. **Iniciar streaming:**
-   ```bash
    node stream.js "magnet:?xt=urn:btih:..."
    ```
-
-3. **Reproducción:**
-   Abre la app **VLC en Android** > Menú > **"Abrir ubicación de red"** e introduce:
-   ```
-   http://127.0.0.1:8000
-   ```
+3. **Reproducir:**
+   Abre la app **VLC en Android** > Menú lateral > **"Flujo de red"** > `http://127.0.0.1:8000`.
 
 ---
 
-## ☁️ Despliegue en la Nube (Hugging Face Spaces - 100% Gratis)
-
-1. Crea un nuevo **Space** en [Hugging Face](https://huggingface.co/spaces) seleccionando **Docker SDK** (Blank).
-2. Sube los archivos del repositorio a tu Space (o vincula el repo de GitHub).
-3. Tu Space iniciará automáticamente `server.js` en el puerto `7860`.
-4. Accede a la URL pública que te da Hugging Face (`https://tu-usuario-tu-espacio.hf.space`) para usar la interfaz web o pasa la URL de `/stream` a tu reproductor VLC desde cualquier lugar.
+### D. Despliegue Cloud en Hugging Face Spaces (100% Gratuito)
+1. Ve a [Hugging Face Spaces](https://huggingface.co/spaces) y crea un nuevo espacio.
+2. Selecciona **Docker SDK** (Blank).
+3. Conecta tu repositorio de GitHub o sube los archivos de este proyecto.
+4. Hugging Face compilará el `Dockerfile` y levantará automáticamente `server.js` en el puerto `7860`.
+5. Accede a tu URL pública (`https://tu-usuario-tu-espacio.hf.space`) para usar la interfaz visual de streaming y descarga en la nube.
 
 ---
 
-## 📜 Licencia
+## 🧹 6. Mecanismo de Auto-Purge y Limpieza
 
-MIT
+* En cada ejecución, el sistema crea un directorio temporal único con prefijo `p2p-stream-`.
+* Los eventos de terminación del sistema (`SIGINT` / `Ctrl+C`, `SIGTERM`, `exit`) son interceptados de forma segura.
+* Al cerrar el reproductor o la terminal, el sistema purga recursivamente la carpeta temporal, garantizando que el disco duro mantenga su espacio original intacto.
+
+---
+
+## 📜 7. Licencia
+
+Distribuido bajo la Licencia **MIT**. Consulta `LICENSE` para más información.
