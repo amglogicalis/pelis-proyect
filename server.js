@@ -43,6 +43,20 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+function formatTorrentInfo(torrent) {
+  const files = (torrent.files || []).map((f, idx) => ({
+    index: idx,
+    name: f.name,
+    length: f.length,
+    size: formatBytes(f.length)
+  }));
+  return {
+    name: torrent.name || 'Torrent',
+    totalSize: formatBytes(torrent.length),
+    files
+  };
+}
+
 // Endpoint para inspeccionar archivos del torrent
 app.get('/api/info', async (req, res) => {
   const { magnet } = req.query;
@@ -50,35 +64,40 @@ app.get('/api/info', async (req, res) => {
     return res.status(400).json({ error: 'Parámetro "magnet" requerido' });
   }
 
-  const wtClient = await getClient();
-  const existing = wtClient.get(magnet);
-  if (existing && existing.files.length > 0) {
-    return res.json({
-      name: existing.name,
-      totalSize: formatBytes(existing.length),
-      files: existing.files.map((f, idx) => ({
-        index: idx,
-        name: f.name,
-        length: f.length,
-        size: formatBytes(f.length)
-      }))
-    });
-  }
+  try {
+    const wtClient = await getClient();
+    let torrent = wtClient.get(magnet);
 
-  wtClient.add(magnet, { store: MemoryChunkStore, announce: DEFAULT_ANNOUNCE }, (torrent) => {
-    const files = torrent.files.map((f, idx) => ({
-      index: idx,
-      name: f.name,
-      length: f.length,
-      size: formatBytes(f.length)
-    }));
-    const data = {
-      name: torrent.name,
-      totalSize: formatBytes(torrent.length),
-      files
+    if (torrent && torrent.files && torrent.files.length > 0) {
+      return res.json(formatTorrentInfo(torrent));
+    }
+
+    if (!torrent) {
+      torrent = wtClient.add(magnet, { store: MemoryChunkStore, announce: DEFAULT_ANNOUNCE });
+    }
+
+    const onReady = () => {
+      if (!res.headersSent) res.json(formatTorrentInfo(torrent));
     };
-    res.json(data);
-  });
+
+    if (torrent.files && torrent.files.length > 0) {
+      return onReady();
+    }
+
+    torrent.once('ready', onReady);
+    torrent.once('metadata', onReady);
+    torrent.once('error', (err) => {
+      if (!res.headersSent) res.status(500).json({ error: err.message });
+    });
+
+    setTimeout(() => {
+      if (!res.headersSent) {
+        res.status(504).json({ error: 'Tiempo de espera agotado buscando metadatos en la red P2P.' });
+      }
+    }, 30000);
+  } catch (err) {
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+  }
 });
 
 // Endpoint de Streaming directo HTTP 100% en RAM
@@ -88,57 +107,67 @@ app.get('/stream', async (req, res) => {
     return res.status(400).send('Parámetro "magnet" requerido');
   }
 
-  const wtClient = await getClient();
-  let torrent = wtClient.get(magnet);
-  const handleTorrentStream = (t) => {
-    let fileIndex = parseInt(select, 10);
-    if (isNaN(fileIndex) || fileIndex < 0 || fileIndex >= t.files.length) {
-      let maxLen = 0;
-      fileIndex = 0;
-      t.files.forEach((f, idx) => {
-        if (f.length > maxLen) {
-          maxLen = f.length;
-          fileIndex = idx;
-        }
+  try {
+    const wtClient = await getClient();
+    let torrent = wtClient.get(magnet);
+    if (!torrent) {
+      torrent = wtClient.add(magnet, { store: MemoryChunkStore, announce: DEFAULT_ANNOUNCE });
+    }
+
+    const startStream = () => {
+      let fileIndex = parseInt(select, 10);
+      if (isNaN(fileIndex) || fileIndex < 0 || fileIndex >= torrent.files.length) {
+        let maxLen = 0;
+        fileIndex = 0;
+        torrent.files.forEach((f, idx) => {
+          if (f.length > maxLen) {
+            maxLen = f.length;
+            fileIndex = idx;
+          }
+        });
+      }
+
+      const file = torrent.files[fileIndex];
+      if (!file) {
+        return res.status(404).send('Archivo no encontrado');
+      }
+
+      const range = req.headers.range;
+      const contentType = file.name.endsWith('.mkv') ? 'video/x-matroska' : 'video/mp4';
+
+      if (!range) {
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Length', file.length);
+        return file.createReadStream().pipe(res);
+      }
+
+      const positions = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(positions[0], 10);
+      const total = file.length;
+      const end = positions[1] ? parseInt(positions[1], 10) : total - 1;
+      const chunksize = end - start + 1;
+
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${total}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': contentType
+      });
+
+      file.createReadStream({ start, end }).pipe(res);
+    };
+
+    if (torrent.files && torrent.files.length > 0) {
+      startStream();
+    } else {
+      torrent.once('ready', startStream);
+      torrent.once('metadata', startStream);
+      torrent.once('error', (err) => {
+        if (!res.headersSent) res.status(500).send('Error: ' + err.message);
       });
     }
-
-    const file = t.files[fileIndex];
-    if (!file) {
-      return res.status(404).send('Archivo no encontrado');
-    }
-
-    const range = req.headers.range;
-    const contentType = file.name.endsWith('.mkv') ? 'video/x-matroska' : 'video/mp4';
-
-    if (!range) {
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Length', file.length);
-      return file.createReadStream().pipe(res);
-    }
-
-    const positions = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(positions[0], 10);
-    const total = file.length;
-    const end = positions[1] ? parseInt(positions[1], 10) : total - 1;
-    const chunksize = end - start + 1;
-
-    res.writeHead(206, {
-      'Content-Range': `bytes ${start}-${end}/${total}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': chunksize,
-      'Content-Type': contentType
-    });
-
-    file.createReadStream({ start, end }).pipe(res);
-  };
-
-  if (torrent && torrent.files.length > 0) {
-    handleTorrentStream(torrent);
-  } else {
-    wtClient.add(magnet, { store: MemoryChunkStore, announce: DEFAULT_ANNOUNCE }, (t) => {
-      handleTorrentStream(t);
-    });
+  } catch (err) {
+    if (!res.headersSent) res.status(500).send('Error en streaming: ' + err.message);
   }
 });
 
