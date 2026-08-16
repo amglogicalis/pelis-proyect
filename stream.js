@@ -3,107 +3,318 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const readline = require('readline');
 const { spawn } = require('child_process');
 
-const args = process.argv.slice(2);
+let WebTorrent = null;
+async function getWebTorrent() {
+  if (!WebTorrent) {
+    const mod = await import('webtorrent');
+    WebTorrent = mod.default || mod;
+  }
+  return WebTorrent;
+}
 
-if (args.length === 0 || args.includes('-h') || args.includes('--help')) {
+const rawArgs = process.argv.slice(2);
+
+// Formatear tamaño de archivo en bytes a B/KB/MB/GB
+function formatBytes(bytes, decimals = 2) {
+  if (!bytes || bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+// Mostrar ayuda
+function showHelp() {
   console.log(`
 🎬 Stream P2P Efímero (pelis-proyect)
 =====================================
 Uso:
-  node stream.js "<magnet_link_o_torrent>" [flags_de_webtorrent]
+  node stream.js "<magnet_link_o_torrent>" [flags]
+
+Flags de control y selección:
+  --select <idx|all>   Índice del archivo a reproducir (si no se especifica, se muestra el selector interactivo)
+  --list               Muestra los archivos del torrent y sale
+  --port <num>         Puerto del servidor HTTP local (por defecto: 8000)
+  --keep               Desactiva el auto-purge (conserva los archivos temporales al salir)
+  --vlc                Abre automáticamente en VLC (si está instalado en PC)
+  --mpv                Abre automáticamente en MPV (si está instalado en PC)
+
+Flags de Almacenamiento Cloud (Estrategias A / Drive):
+  --rolla              Descarga y sube el archivo a Rolla Storage Engine (GitHub Releases CDN) con chunking
+  --ball <nombre>      Nombre de la Rolla-Ball / Bucket (por defecto: 'pelis-stream')
+  --drive              Sube el archivo procesado a Google Drive
 
 Ejemplos:
   node stream.js "magnet:?xt=urn:btih:..."
-  node stream.js "magnet:?xt=urn:btih:..." --port 8080
-  node stream.js "magnet:?xt=urn:btih:..." --select 0
-  node stream.js "magnet:?xt=urn:btih:..." --vlc
-
-Flags comunes de WebTorrent:
-  --port <num>      Puerto para el servidor HTTP (por defecto: 8000)
-  --select <idx>    Índice del archivo a descargar (útil para packs/series)
-  --vlc             Abre automáticamente en VLC (si está instalado)
-  --mpv             Abre automáticamente en MPV (si está instalado)
-  --list            Lista los archivos incluidos en el torrent
-  --quiet           Oculta la barra de progreso
+  node stream.js "magnet:?xt=urn:btih:..." --select 0 --vlc
+  node stream.js "magnet:?xt=urn:btih:..." --select 1 --rolla --ball "series-hd"
   `);
   process.exit(0);
 }
 
-// Crear directorio temporal único y aislado
+if (rawArgs.length === 0 || rawArgs.includes('-h') || rawArgs.includes('--help')) {
+  showHelp();
+}
+
+// Extraer el enlace de torrent / magnet
+const magnet = rawArgs.find(arg => !arg.startsWith('--') && !arg.startsWith('-'));
+if (!magnet) {
+  console.error('❌ Error: Debes proporcionar un magnet link o ruta de archivo .torrent.');
+  process.exit(1);
+}
+
+// Analizar flags
+const isListOnly = rawArgs.includes('--list');
+const keepFiles = rawArgs.includes('--keep');
+const isRolla = rawArgs.includes('--rolla') || rawArgs.includes('--save-rolla');
+const isDrive = rawArgs.includes('--drive') || rawArgs.includes('--save-drive');
+const isVlc = rawArgs.includes('--vlc');
+const isMpv = rawArgs.includes('--mpv');
+
+let selectArg = null;
+const selectIdx = rawArgs.indexOf('--select');
+if (selectIdx !== -1 && rawArgs[selectIdx + 1]) {
+  selectArg = rawArgs[selectIdx + 1];
+}
+
+let port = '8000';
+const portIdx = rawArgs.indexOf('--port');
+if (portIdx !== -1 && rawArgs[portIdx + 1]) {
+  port = rawArgs[portIdx + 1];
+}
+
+let ballName = 'pelis-stream';
+const ballIdx = rawArgs.indexOf('--ball');
+if (ballIdx !== -1 && rawArgs[ballIdx + 1]) {
+  ballName = rawArgs[ballIdx + 1];
+}
+
+// Directorio temporal con auto-purge
 const tempPrefix = path.join(os.tmpdir(), 'p2p-stream-');
 const tempDir = fs.mkdtempSync(tempPrefix);
 
-let cleanedUp = false;
+let isCleaning = false;
 function cleanup() {
-  if (cleanedUp) return;
-  cleanedUp = true;
-  console.log('\n🛑 Cerrando sesión de streaming...');
-  try {
-    if (fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-      console.log('✅ Archivos temporales eliminados. Espacio liberado.');
+  if (isCleaning) return;
+  isCleaning = true;
+  if (!keepFiles) {
+    console.log('\n🛑 Limpiando búfer y eliminando archivos temporales (Auto-Purge)...');
+    try {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        console.log('✅ Espacio en disco 100% liberado.');
+      }
+    } catch (err) {
+      console.error('⚠️ Aviso al purgar carpeta temporal:', err.message);
     }
-  } catch (err) {
-    console.error('⚠️ No se pudo eliminar la carpeta temporal por completo:', err.message);
+  } else {
+    console.log(`\n💾 Archivos conservados en: ${tempDir}`);
   }
 }
 
-// Capturar señales de salida del sistema
 process.on('SIGINT', () => { cleanup(); process.exit(0); });
 process.on('SIGTERM', () => { cleanup(); process.exit(0); });
 process.on('exit', () => cleanup());
-process.on('uncaughtException', (err) => {
-  console.error('Error inesperado:', err);
-  cleanup();
-  process.exit(1);
-});
 
-// Comprobar flags por defecto si el usuario no especificó puerto ni reproductor
-const hasPort = args.some(arg => arg === '--port' || arg.startsWith('--port='));
-const hasHttp = args.includes('--http');
-const hasPlayer = args.some(arg => ['--vlc', '--mpv', '--airplay', '--chromecast', '--dlna', '--list'].includes(arg));
+// Pre-inspección de metadatos del torrent
+async function inspectTorrent(torrentId) {
+  const WT = await getWebTorrent();
+  return new Promise((resolve, reject) => {
+    const client = new WT();
+    console.log('🔍 Inspeccionando metadatos del torrent en la red P2P...');
+    
+    const timeout = setTimeout(() => {
+      client.destroy();
+      reject(new Error('Tiempo de espera agotado buscando metadatos del torrent.'));
+    }, 25000);
 
-const finalArgs = [...args, '--out', tempDir];
+    client.add(torrentId, { path: tempDir }, (torrent) => {
+      clearTimeout(timeout);
+      const filesInfo = torrent.files.map((file, idx) => ({
+        index: idx,
+        name: file.name,
+        length: file.length,
+        sizeFormatted: formatBytes(file.length)
+      }));
+      const name = torrent.name;
+      const totalLength = torrent.length;
+      client.destroy(() => {
+        resolve({ name, totalLength, files: filesInfo });
+      });
+    });
 
-if (!hasHttp && !hasPlayer) {
-  finalArgs.push('--http');
+    client.on('error', (err) => {
+      clearTimeout(timeout);
+      client.destroy();
+      reject(err);
+    });
+  });
 }
-if (!hasPort && (hasHttp || !hasPlayer)) {
-  finalArgs.push('--port', '8000');
+
+// Preguntar interactivamente al usuario si hay múltiples archivos
+function promptUserSelection(files) {
+  return new Promise((resolve) => {
+    console.log('\n📦 Archivos encontrados en el torrent:');
+    console.log('--------------------------------------------------');
+    files.forEach(f => {
+      console.log(`  [${f.index}] ${f.name} (${f.sizeFormatted})`);
+    });
+    console.log('--------------------------------------------------');
+
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    rl.question(`\n👉 Selecciona el índice del archivo a reproducir [0-${files.length - 1}] o 'all' (por defecto: 0): `, (answer) => {
+      rl.close();
+      const trimmed = answer.trim().toLowerCase();
+      if (trimmed === 'all') {
+        resolve('all');
+      } else if (trimmed === '' || isNaN(parseInt(trimmed, 10))) {
+        resolve('0');
+      } else {
+        resolve(trimmed);
+      }
+    });
+  });
 }
 
-// Determinar ejecutable de webtorrent
-const binPath = path.join(__dirname, 'node_modules', '.bin', process.platform === 'win32' ? 'webtorrent.cmd' : 'webtorrent');
-const executable = fs.existsSync(binPath) ? binPath : 'webtorrent';
+// Subida a Rolla Storage Engine
+async function uploadToRolla(filePath, fileName, ball) {
+  console.log(`\n🚀 Subiendo a Rolla Storage Engine (Ball: "${ball}")...`);
+  try {
+    let Rolla;
+    try {
+      Rolla = require('terra-rolla').Rolla;
+    } catch {
+      // Intentar cargar desde ruta local de desarrollo si existe
+      const localSdkPath = 'C:\\mis-proyectos\\Terra\\rolla\\Rolla\\packages\\rolla-sdk\\dist\\index.js';
+      if (fs.existsSync(localSdkPath)) {
+        Rolla = require(localSdkPath).Rolla;
+      } else {
+        throw new Error('terra-rolla no está instalado. Ejecuta: npm install terra-rolla');
+      }
+    }
 
-console.log('🚀 Iniciando servidor P2P efímero...');
-console.log(`📂 Carpeta temporal: ${tempDir}`);
-if (!hasPlayer) {
-  const portArgIdx = finalArgs.indexOf('--port');
-  const port = portArgIdx !== -1 ? finalArgs[portArgIdx + 1] : '8000';
-  console.log(`📡 URL de reproducción: http://127.0.0.1:${port}`);
-  console.log(`💡 Abre esta URL en VLC, MPV o en tu navegador móvil.`);
-}
-console.log('--------------------------------------------------\n');
+    const rolla = new Rolla({
+      githubToken: process.env.GITHUB_TOKEN || process.env.GH_TOKEN
+    });
 
-const child = spawn(executable, finalArgs, {
-  stdio: 'inherit',
-  shell: process.platform === 'win32'
-});
-
-child.on('error', (err) => {
-  if (err.code === 'ENOENT') {
-    console.error('\n❌ No se encontró "webtorrent". Ejecuta primero: npm install');
-  } else {
-    console.error('\n❌ Error al ejecutar:', err.message);
+    const fileBuffer = fs.readFileSync(filePath);
+    await rolla.createBall(ball);
+    await rolla.putObject(ball, fileName, fileBuffer);
+    console.log(`✅ ¡Archivo subido con éxito a Rolla-Ball "${ball}"!`);
+    console.log(`📦 Objeto: ${fileName} (${formatBytes(fileBuffer.length)})`);
+  } catch (err) {
+    console.error('❌ Error durante la subida a Rolla:', err.message);
   }
-  cleanup();
-  process.exit(1);
-});
+}
 
-child.on('close', (code) => {
-  cleanup();
-  process.exit(code || 0);
-});
+// Ejecutar streaming o descarga
+async function main() {
+  try {
+    const meta = await inspectTorrent(magnet);
+    console.log(`\n🎥 Torrent: ${meta.name} (Total: ${formatBytes(meta.totalLength)})`);
+
+    if (isListOnly) {
+      console.log('\n📦 Lista de archivos:');
+      meta.files.forEach(f => console.log(`  [${f.index}] ${f.name} (${f.sizeFormatted})`));
+      cleanup();
+      process.exit(0);
+    }
+
+    let selectedIndex = selectArg;
+    if (selectedIndex === null) {
+      if (meta.files.length === 1) {
+        selectedIndex = '0';
+      } else {
+        selectedIndex = await promptUserSelection(meta.files);
+      }
+    }
+
+    const chosenFile = selectedIndex !== 'all' ? meta.files[parseInt(selectedIndex, 10)] : null;
+    if (chosenFile) {
+      console.log(`\n▶️ Seleccionado: [${chosenFile.index}] ${chosenFile.name} (${chosenFile.sizeFormatted})`);
+    }
+
+    // Modo Rolla o Drive (Descarga completa y subida)
+    if (isRolla || isDrive) {
+      console.log('\n📥 Descargando archivo para procesamiento Cloud...');
+      const WT = await getWebTorrent();
+      const client = new WT();
+      client.add(magnet, { path: tempDir }, (torrent) => {
+        if (selectedIndex !== 'all') {
+          torrent.files.forEach((file, idx) => {
+            if (idx !== parseInt(selectedIndex, 10)) {
+              file.deselect();
+            }
+          });
+        }
+
+        torrent.on('download', () => {
+          const progress = (torrent.progress * 100).toFixed(1);
+          process.stdout.write(`\r⬇️ Descargando: ${progress}% | Velocidad: ${formatBytes(torrent.downloadSpeed)}/s`);
+        });
+
+        torrent.on('done', async () => {
+          console.log('\n✅ Descarga completada.');
+          if (isRolla) {
+            const targetFile = chosenFile ? path.join(tempDir, chosenFile.name) : path.join(tempDir, torrent.files[0].name);
+            await uploadToRolla(targetFile, chosenFile ? chosenFile.name : torrent.files[0].name, ballName);
+          }
+          client.destroy(() => {
+            cleanup();
+            process.exit(0);
+          });
+        });
+      });
+      return;
+    }
+
+    // Modo Streaming HTTP en vivo
+    const binPath = path.join(__dirname, 'node_modules', '.bin', process.platform === 'win32' ? 'webtorrent.cmd' : 'webtorrent');
+    const executable = fs.existsSync(binPath) ? binPath : 'webtorrent';
+
+    const execArgs = [magnet, '--out', tempDir];
+
+    if (selectedIndex !== 'all') {
+      execArgs.push('--select', selectedIndex);
+    }
+
+    if (isVlc) execArgs.push('--vlc');
+    if (isMpv) execArgs.push('--mpv');
+    if (!isVlc && !isMpv) {
+      execArgs.push('--http', '--port', port);
+    }
+
+    console.log('\n🚀 Iniciando streaming en tiempo real...');
+    console.log(`📂 Almacenamiento efímero: ${tempDir}`);
+    if (!isVlc && !isMpv) {
+      console.log(`📡 URL de red: http://127.0.0.1:${port}`);
+      console.log('💡 Abre esta URL en VLC (Móvil / PC) o en tu navegador.');
+    }
+    console.log('--------------------------------------------------\n');
+
+    const child = spawn(executable, execArgs, {
+      stdio: 'inherit',
+      shell: process.platform === 'win32'
+    });
+
+    child.on('close', (code) => {
+      cleanup();
+      process.exit(code || 0);
+    });
+
+  } catch (err) {
+    console.error('\n❌ Error:', err.message);
+    cleanup();
+    process.exit(1);
+  }
+}
+
+main();

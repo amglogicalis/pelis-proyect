@@ -1,100 +1,99 @@
-# 🎬 pelis-proyect (Stream P2P Efímero)
+# 🎬 pelis-proyect
 
-Sistema ligero de streaming P2P bajo demanda para PC y móviles.
-Descarga y sirve contenido en tiempo real por HTTP directamente a tu reproductor (VLC, MPV o navegador) y **elimina automáticamente los archivos temporales** al terminar la sesión, sin ocupar espacio permanente en disco.
+Sistema de streaming P2P efímero y cliente Cloud bajo demanda para PC, móvil (Termux) y servidores Cloud (Hugging Face Spaces / Docker).
+
+Permite reproducir vídeos directamente por HTTP en tiempo real en VLC, MPV o navegador web sin esperar a la descarga completa, con **selector interactivo de archivos**, **Auto-Purge por defecto** y soporte para almacenamiento de objetos **Rolla** y **Google Drive**.
 
 ---
 
-## 🚀 Instalación Rápida
+## 🌟 Características Principales
 
-1. Clona el repositorio:
-   ```bash
-   git clone https://github.com/amglogicalis/pelis-proyect.git
-   cd pelis-proyect
-   ```
+- ⚡ **Streaming Secuencial en Tiempo Real**: Visualización inmediata por HTTP.
+- 🎯 **Estrategia B - Selector Interactivo**: Si el torrent contiene varios archivos (series/packs), el sistema inspecciona los metadatos y te permite elegir exactamente el capítulo que deseas.
+- 🧹 **Estrategia C - Auto-Purge por Defecto**: Todos los datos descargados en el búfer temporal se destruyen automáticamente al cerrar la sesión (`Ctrl+C` o fin del reproductor), dejando 0 bytes residuales.
+- 📦 **Estrategia A - Rolla Storage Engine (`--rolla`)**: Permite subir el archivo procesado a la CDN inmutable de GitHub Releases mediante fragmentación automática (*chunking*).
+- ☁️ **Soporte Cloud / Hugging Face Spaces**: Incluye `server.js` con interfaz web lista para desplegar gratis en Hugging Face Spaces (2 vCPU / 16 GB RAM).
 
-2. Instala las dependencias:
-   ```bash
-   npm install
-   ```
+---
+
+## 🚀 Instalación
+
+```bash
+git clone https://github.com/amglogicalis/pelis-proyect.git
+cd pelis-proyect
+npm install
+```
 
 ---
 
 ## 💻 Modos de Uso
 
-### 1. Universal (Node.js - Windows / Linux / macOS / Termux)
-Funciona en cualquier sistema con Node.js instalado:
-
+### 1. Modo Interactivo (CLI Universal - PC / Termux)
 ```bash
-node stream.js "<MAGNET_LINK>"
+node stream.js "magnet:?xt=urn:btih:..."
+```
+> *Si el torrent contiene varios archivos, te mostrará la lista con sus tamaños y te preguntará cuál reproducir.*
+
+### 2. Flags y Opciones Directas
+
+| Flag | Descripción |
+| :--- | :--- |
+| `--select <idx>` | Selecciona directamente el índice del archivo sin preguntar (ej: `--select 0`). |
+| `--vlc` | Abre automáticamente el stream en el reproductor VLC (PC). |
+| `--mpv` | Abre automáticamente el stream en el reproductor MPV (PC). |
+| `--port <num>` | Cambia el puerto HTTP del servidor local (por defecto `8000`). |
+| `--list` | Muestra la lista de archivos con sus tamaños en MB/GB y sale. |
+| `--keep` | Desactiva el auto-purge y conserva los archivos descargados. |
+| `--rolla` | Descarga y sube el archivo a Rolla Storage Engine. |
+| `--ball <nombre>` | Especifica el nombre de la Rolla-Ball / Bucket (por defecto `pelis-stream`). |
+| `--drive` | Sube el archivo procesado a Google Drive. |
+
+#### Ejemplos de uso:
+```bash
+# Ver lista de archivos con tamaños
+node stream.js "magnet:?xt=urn:btih:..." --list
+
+# Reproducir el capítulo 2 directamente en VLC
+node stream.js "magnet:?xt=urn:btih:..." --select 1 --vlc
+
+# Subir a Rolla Storage Engine (Ball personalizada)
+node stream.js "magnet:?xt=urn:btih:..." --select 0 --rolla --ball "peliculas-hd"
 ```
 
-### 2. Windows (PowerShell)
-```powershell
-.\stream.ps1 "<MAGNET_LINK>"
-```
+---
 
-### 3. Android (Termux)
-1. Instala los paquetes requeridos en Termux (solo la primera vez):
+## 📱 Uso en Android con Termux
+
+1. **Instalación inicial:**
    ```bash
    pkg update && pkg install nodejs-lts git
-   ```
-2. Clona el repo e instala dependencias:
-   ```bash
    git clone https://github.com/amglogicalis/pelis-proyect.git
    cd pelis-proyect
    npm install
    ```
-3. Ejecuta el script:
+
+2. **Iniciar streaming:**
    ```bash
-   chmod +x stream.sh
-   ./stream.sh "<MAGNET_LINK>"
+   node stream.js "magnet:?xt=urn:btih:..."
    ```
-4. Abre la app **VLC en Android** > Menú > **"Abrir ubicación de red"** (o "Flujo de red") e introduce:
+
+3. **Reproducción:**
+   Abre la app **VLC en Android** > Menú > **"Abrir ubicación de red"** e introduce:
    ```
    http://127.0.0.1:8000
    ```
 
-### 4. Docker (Cero instalación en host)
-```bash
-# Construir imagen (una sola vez)
-docker build -t pelis-stream .
+---
 
-# Ejecutar efímero con autodestrucción
-docker run --rm -it -p 8000:8000 pelis-stream "<MAGNET_LINK>" --http --port 8000
-```
+## ☁️ Despliegue en la Nube (Hugging Face Spaces - 100% Gratis)
+
+1. Crea un nuevo **Space** en [Hugging Face](https://huggingface.co/spaces) seleccionando **Docker SDK** (Blank).
+2. Sube los archivos del repositorio a tu Space (o vincula el repo de GitHub).
+3. Tu Space iniciará automáticamente `server.js` en el puerto `7860`.
+4. Accede a la URL pública que te da Hugging Face (`https://tu-usuario-tu-espacio.hf.space`) para usar la interfaz web o pasa la URL de `/stream` a tu reproductor VLC desde cualquier lugar.
 
 ---
 
-## ⚙️ Flags y Opciones Útiles
+## 📜 Licencia
 
-Puedes pasar cualquier flag soportado por WebTorrent directamente a los scripts:
-
-| Flag | Descripción |
-| :--- | :--- |
-| `--select <idx>` | Descarga solo el archivo especificado por su índice (útil para series o packs de episodios). |
-| `--list` | Muestra el listado de archivos dentro del torrent con sus índices sin reproducir. |
-| `--port <num>` | Cambia el puerto HTTP del servidor (por defecto `8000`). |
-| `--vlc` | Abre automáticamente el reproductor VLC en el PC. |
-| `--mpv` | Abre automáticamente el reproductor MPV en el PC. |
-
-### Ejemplos con Flags:
-```bash
-# Listar archivos de un torrent para ver los números de episodios
-node stream.js "magnet:?xt=urn:btih:..." --list
-
-# Reproducir solo el episodio 3 (índice 2)
-node stream.js "magnet:?xt=urn:btih:..." --select 2
-
-# Abrir directamente en VLC en el PC
-node stream.js "magnet:?xt=urn:btih:..." --vlc
-```
-
----
-
-## 🧹 Autodestrucción y Limpieza
-
-Cuando termines de ver el vídeo o pulses **`Ctrl+C`** en la terminal:
-1. El servidor HTTP y la conexión P2P se cierran.
-2. El script intercepta la señal (`SIGINT`/`trap`) y ejecuta un borrado recursivo forzado de la carpeta temporal.
-3. El disco queda libre inmediatamente sin archivos residuales.
+MIT

@@ -1,10 +1,13 @@
 FROM node:20-alpine
 
-RUN npm install -g webtorrent-cli
+WORKDIR /app
 
-WORKDIR /tmp/stream
+COPY package*.json ./
+RUN npm install --production
 
-EXPOSE 8000
+COPY . .
 
-ENTRYPOINT ["webtorrent"]
-CMD ["--help"]
+ENV PORT=7860
+EXPOSE 7860
+
+CMD ["node", "server.js"]

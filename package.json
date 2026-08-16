@@ -1,24 +1,30 @@
 {
   "name": "pelis-proyect",
   "version": "1.0.0",
-  "description": "Sistema de streaming P2P efímero bajo demanda sin almacenamiento permanente.",
+  "description": "Sistema de streaming P2P efímero cloud y local con selector interactivo, auto-purge y soporte Rolla/Drive.",
   "main": "stream.js",
   "bin": {
     "stream": "./stream.js"
   },
   "scripts": {
-    "start": "node stream.js"
+    "start": "node stream.js",
+    "server": "node server.js"
   },
   "keywords": [
     "torrent",
     "streaming",
     "webtorrent",
     "p2p",
-    "ephemeral"
+    "ephemeral",
+    "rolla",
+    "cloud"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "webtorrent": "^2.5.0",
     "webtorrent-cli": "^5.1.1"
   }
 }
