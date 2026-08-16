@@ -240,13 +240,31 @@ app.get('/', (req, res) => {
         <label for="magnet">Magnet Link / URL de Torrent</label>
         <input type="text" id="magnet" placeholder="magnet:?xt=urn:btih:..." />
       </div>
-      <div style="display: flex; gap: 0.5rem;">
-        <button class="btn" id="inspectBtn" onclick="inspectTorrent()">🔍 Inspeccionar Archivos</button>
-        <button class="btn" style="background: #3b82f6; color: #fff;" onclick="playDirect()">▶️ Reproducción Directa</button>
+      
+      <div style="margin-bottom: 1rem;">
+        <label>Opciones de Selección y Streaming:</label>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button class="btn" style="flex: 1; min-width: 140px;" id="inspectBtn" onclick="inspectTorrent()">🔍 Inspeccionar Archivos</button>
+          <button class="btn" style="flex: 1; min-width: 140px; background: #3b82f6; color: #fff;" onclick="playDirect()">▶️ Reproducción Directa (Auto)</button>
+        </div>
+      </div>
+
+      <div style="background: var(--bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-top: 0.5rem;">
+        <label style="margin-bottom: 0.5rem; display: block;">🎯 Seleccionar Archivo Específico por Índice (Sin Esperar):</label>
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+          <button class="btn" style="width: auto; padding: 0.5rem 0.75rem; font-size: 0.85rem; background: var(--card); border: 1px solid var(--border); color: var(--text);" onclick="selectAndPlay(0)">Capítulo [0]</button>
+          <button class="btn" style="width: auto; padding: 0.5rem 0.75rem; font-size: 0.85rem; background: var(--card); border: 1px solid var(--border); color: var(--text);" onclick="selectAndPlay(1)">Capítulo [1]</button>
+          <button class="btn" style="width: auto; padding: 0.5rem 0.75rem; font-size: 0.85rem; background: var(--card); border: 1px solid var(--border); color: var(--text);" onclick="selectAndPlay(2)">Capítulo [2]</button>
+          <button class="btn" style="width: auto; padding: 0.5rem 0.75rem; font-size: 0.85rem; background: var(--card); border: 1px solid var(--border); color: var(--text);" onclick="selectAndPlay(3)">Capítulo [3]</button>
+          <div style="display: flex; gap: 0.3rem; align-items: center; margin-left: auto;">
+            <input type="number" id="customIdx" min="0" max="99" value="0" style="width: 60px; padding: 0.4rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; text-align: center;" />
+            <button class="btn" style="width: auto; padding: 0.4rem 0.75rem; font-size: 0.85rem;" onclick="selectAndPlay(document.getElementById('customIdx').value)">▶️ Ver Índice</button>
+          </div>
+        </div>
       </div>
 
       <div class="files-list" id="filesContainer">
-        <label>Selecciona el archivo que deseas reproducir:</label>
+        <label style="margin-top: 1rem; display: block;">Archivos detectados en el torrent:</label>
         <div id="filesList"></div>
         <button class="btn" style="margin-top: 1rem;" onclick="startPlayback()">▶️ Iniciar Streaming del Archivo Elegido</button>
       </div>
@@ -315,6 +333,14 @@ app.get('/', (req, res) => {
       if (!magnet) return alert('Por favor introduce un magnet link');
       currentMagnet = magnet;
       selectedFileIndex = 0;
+      startPlayback();
+    }
+
+    function selectAndPlay(idx) {
+      const magnet = document.getElementById('magnet').value.trim();
+      if (!magnet) return alert('Por favor introduce un magnet link');
+      currentMagnet = magnet;
+      selectedFileIndex = parseInt(idx, 10) || 0;
       startPlayback();
     }
 
