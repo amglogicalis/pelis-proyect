@@ -45,4 +45,4 @@ echo "📂 Almacenamiento temporal: $TEMP_DIR"
 echo "📡 Reproductor de red: http://127.0.0.1:8000"
 echo "--------------------------------------------------"
 
-"$WEBTORRENT_BIN" "$@" --out "$TEMP_DIR" --http --port 8000
+"$WEBTORRENT_BIN" "$@" --out "$TEMP_DIR" --port 8000

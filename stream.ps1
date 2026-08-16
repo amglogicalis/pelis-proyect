@@ -41,7 +41,7 @@ try {
     Write-Host "📡 Servidor HTTP: http://127.0.0.1:8000" -ForegroundColor Cyan
     Write-Host "--------------------------------------------------" -ForegroundColor DarkGray
 
-    $cmdArgs = @($MagnetLink) + $ExtraArgs + @("--out", $TempDir, "--http", "--port", "8000")
+    $cmdArgs = @($MagnetLink) + $ExtraArgs + @("--out", $TempDir, "--port", "8000")
     
     $localBin = Join-Path $PSScriptRoot "node_modules\.bin\webtorrent.cmd"
     if (Test-Path $localBin) {

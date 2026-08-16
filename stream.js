@@ -338,7 +338,7 @@ async function main() {
     if (isVlc) execArgs.push('--vlc');
     if (isMpv) execArgs.push('--mpv');
     if (!isVlc && !isMpv) {
-      execArgs.push('--http', '--port', port);
+      execArgs.push('--port', port);
     }
 
     console.log('\n🚀 Iniciando streaming en tiempo real...');
