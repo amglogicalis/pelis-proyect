@@ -226,12 +226,15 @@ app.get('/', (req, res) => {
         <label for="magnet">Magnet Link / URL de Torrent</label>
         <input type="text" id="magnet" placeholder="magnet:?xt=urn:btih:..." />
       </div>
-      <button class="btn" id="inspectBtn" onclick="inspectTorrent()">🔍 Inspeccionar Archivos</button>
+      <div style="display: flex; gap: 0.5rem;">
+        <button class="btn" id="inspectBtn" onclick="inspectTorrent()">🔍 Inspeccionar Archivos</button>
+        <button class="btn" style="background: #3b82f6; color: #fff;" onclick="playDirect()">▶️ Reproducción Directa</button>
+      </div>
 
       <div class="files-list" id="filesContainer">
         <label>Selecciona el archivo que deseas reproducir:</label>
         <div id="filesList"></div>
-        <button class="btn" style="margin-top: 1rem;" onclick="startPlayback()">▶️ Iniciar Streaming</button>
+        <button class="btn" style="margin-top: 1rem;" onclick="startPlayback()">▶️ Iniciar Streaming del Archivo Elegido</button>
       </div>
     </div>
 
@@ -261,6 +264,10 @@ app.get('/', (req, res) => {
         const res = await fetch('/api/info?magnet=' + encodeURIComponent(magnet));
         const data = await res.json();
         
+        if (!data || data.error || !data.files || !Array.isArray(data.files)) {
+          throw new Error(data && data.error ? data.error : 'No se pudieron recuperar los archivos');
+        }
+
         const listDiv = document.getElementById('filesList');
         listDiv.innerHTML = '';
         
@@ -278,11 +285,19 @@ app.get('/', (req, res) => {
 
         document.getElementById('filesContainer').style.display = 'block';
       } catch (err) {
-        alert('Error al consultar el torrent: ' + err.message);
+        alert('Aviso: ' + err.message + '. Puedes pulsar "Reproducción Directa" para iniciar de inmediato.');
       } finally {
         btn.innerText = '🔍 Inspeccionar Archivos';
         btn.disabled = false;
       }
+    }
+
+    function playDirect() {
+      const magnet = document.getElementById('magnet').value.trim();
+      if (!magnet) return alert('Por favor introduce un magnet link');
+      currentMagnet = magnet;
+      selectedFileIndex = 0;
+      startPlayback();
     }
 
     function startPlayback() {
@@ -295,7 +310,7 @@ app.get('/', (req, res) => {
       vlcLink.href = streamUrl;
       vlcLink.innerText = streamUrl;
       playerContainer.style.display = 'block';
-      video.play();
+      video.play().catch(e => console.log('Autoplay:', e));
     }
   </script>
 </body>
