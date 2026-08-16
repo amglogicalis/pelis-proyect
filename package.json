@@ -1,0 +1,24 @@
+{
+  "name": "pelis-proyect",
+  "version": "1.0.0",
+  "description": "Sistema de streaming P2P efímero bajo demanda sin almacenamiento permanente.",
+  "main": "stream.js",
+  "bin": {
+    "stream": "./stream.js"
+  },
+  "scripts": {
+    "start": "node stream.js"
+  },
+  "keywords": [
+    "torrent",
+    "streaming",
+    "webtorrent",
+    "p2p",
+    "ephemeral"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "webtorrent-cli": "^5.1.1"
+  }
+}
