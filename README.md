@@ -169,20 +169,72 @@ node stream.js "magnet:?xt=urn:btih:..." --list
 
 ---
 
-### C. Uso en Dispositivos Móviles (Android con Termux)
-1. **Instalar paquetes en Termux:**
+### C. Uso Completo en Dispositivos Móviles (Android con Termux)
+
+Esta guía detalla la instalación desde cero, permisos, optimizaciones del sistema operativo y configuración de reproducción en Android.
+
+#### Paso 1: Instalar Termux correctamente
+> ⚠️ **IMPORTANTE:** **NO instales Termux desde Google Play Store** (la versión de Play Store está descontinuada y no puede actualizar paquetes).
+* Descarga e instala **Termux** desde [F-Droid](https://f-droid.org/en/packages/com.termux/) o desde los [Releases oficiales de Termux en GitHub](https://github.com/termux/termux-app/releases).
+
+#### Paso 2: Permisos de Almacenamiento y Optimización de Batería
+1. Abre Termux y concede permisos de almacenamiento ejecutando:
    ```bash
-   pkg update && pkg install nodejs-lts git rclone
+   termux-setup-storage
    ```
-2. **Clonar e iniciar:**
-   ```bash
-   git clone https://github.com/amglogicalis/pelis-proyect.git
-   cd pelis-proyect
-   npm install
-   node stream.js "magnet:?xt=urn:btih:..."
+   *(Acepta la ventana emergente de permisos de Android)*.
+2. **Exención de batería:** Para evitar que Android cierre Termux en segundo plano mientras ves una película:
+   * Ve a *Ajustes de Android > Aplicaciones > Termux > Batería > Selecciona "Sin restricciones"* (o pulsa la notificación persistente de Termux y activa *Acquire Wakelock*).
+
+#### Paso 3: Actualizar e Instalar TODAS las dependencias necesarias
+Ejecuta en Termux este comando único que instala Node.js, Git, Rclone y herramientas de compilación:
+```bash
+pkg update && pkg upgrade -y
+pkg install -y nodejs-lts git rclone build-essential python
+```
+
+#### Paso 4: Clonar el Repositorio e Instalar el Proyecto
+```bash
+git clone https://github.com/amglogicalis/pelis-proyect.git
+cd pelis-proyect
+npm install
+```
+
+#### Paso 5: Iniciar el Streaming Efímero
+Ejecuta el script con tu enlace magnet:
+```bash
+node stream.js "magnet:?xt=urn:btih:..."
+```
+Verás en la consola:
+```text
+🚀 Iniciando streaming en tiempo real...
+📡 URL de red: http://127.0.0.1:8000
+```
+
+#### Paso 6: Ver el vídeo en VLC para Android
+1. Instala la app **VLC for Android** desde Google Play Store o F-Droid.
+2. Abre VLC > Pulsa en la pestaña **Más** (o el menú lateral de tres líneas).
+3. Selecciona **"Flujo de red"** (o *"Streams / Abrir ubicación de red"*).
+4. Introduce la URL:
    ```
-3. **Reproducir:**
-   Abre la app **VLC en Android** > Menú lateral > **"Flujo de red"** > `http://127.0.0.1:8000`.
+   http://127.0.0.1:8000
+   ```
+5. Pulsa en la flecha de reproducir. ¡El vídeo comenzará de inmediato!
+
+#### Paso 7: Finalizar y Liberar Almacenamiento
+* Cuando termines de ver el vídeo, regresa a Termux y pulsa **`Ctrl + C`**.
+* El sistema activará el **Auto-Purge** y borrará inmediatamente todo el búfer temporal, dejando el almacenamiento de tu móvil 100% limpio.
+
+#### 💡 Pro-Tip: Crear un comando rápido (Alias) en Termux
+Para poder ejecutar el streaming desde cualquier carpeta de Termux sin escribir `cd pelis-proyect`:
+```bash
+echo "alias pelis='node ~/pelis-proyect/stream.js'" >> ~/.bashrc
+source ~/.bashrc
+```
+Ahora solo tendrás que escribir:
+```bash
+pelis "magnet:?xt=urn:btih:..."
+```
 
 ---
 
