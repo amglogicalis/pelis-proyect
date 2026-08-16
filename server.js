@@ -36,6 +36,13 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+const app = express();
+const PORT = process.env.PORT || 7860;
+
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 // Endpoint para inspeccionar archivos del torrent
 app.get('/api/info', async (req, res) => {
   const { magnet } = req.query;
