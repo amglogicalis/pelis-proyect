@@ -59,23 +59,33 @@ function formatTorrentInfo(torrent) {
 
 function getOrAddTorrent(wtClient, magnet, callback) {
   let torrent = wtClient.get(magnet);
-  if (torrent && torrent.files && torrent.files.length > 0) {
-    return callback(null, torrent);
-  }
+
+  const done = (t) => {
+    if (t && t.files && t.files.length > 0) {
+      callback(null, t);
+      return true;
+    }
+    return false;
+  };
+
+  if (torrent && done(torrent)) return;
 
   if (torrent) {
     if (typeof torrent.on === 'function') {
-      torrent.on('ready', () => callback(null, torrent));
+      torrent.on('ready', () => done(torrent));
+      torrent.on('metadata', () => done(torrent));
       torrent.on('error', (err) => callback(err));
-    } else {
-      callback(null, torrent);
     }
     return;
   }
 
-  wtClient.add(magnet, { store: MemoryChunkStore, announce: DEFAULT_ANNOUNCE }, (t) => {
-    callback(null, t);
+  torrent = wtClient.add(magnet, { store: MemoryChunkStore, announce: DEFAULT_ANNOUNCE }, (t) => {
+    done(t);
   });
+
+  torrent.on('ready', () => done(torrent));
+  torrent.on('metadata', () => done(torrent));
+  torrent.on('error', (err) => callback(err));
 }
 
 // Endpoint para inspeccionar archivos del torrent
@@ -245,8 +255,12 @@ app.get('/', (req, res) => {
     <div class="card player-section" id="playerContainer">
       <video id="videoPlayer" controls autoplay></video>
       <div class="stream-links">
-        <p><strong>📡 URL de Red para VLC / Apps:</strong></p>
-        <a id="vlcLink" href="#" target="_blank"></a>
+        <p style="margin-bottom: 0.5rem;"><strong>📡 URL de Streaming Directa:</strong></p>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <input type="text" id="vlcInput" readonly style="flex: 1; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px;" />
+          <button class="btn" style="width: auto; padding: 0.5rem 1rem; font-size: 0.9rem;" onclick="copyStreamUrl()">📋 Copiar</button>
+        </div>
+        <p style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--muted);">💡 Si el archivo es formato MKV/x265 y tu navegador no lo decodifica, pega este enlace en <strong>VLC</strong> (<em>Medio > Abrir ubicación de red</em>) o en tu reproductor de vídeo.</p>
       </div>
     </div>
   </div>
@@ -268,8 +282,8 @@ app.get('/', (req, res) => {
         const res = await fetch('/api/info?magnet=' + encodeURIComponent(magnet));
         const data = await res.json();
         
-        if (!data || data.error || !data.files || !Array.isArray(data.files)) {
-          throw new Error(data && data.error ? data.error : 'No se pudieron recuperar los archivos');
+        if (!data || data.error || !data.files || !Array.isArray(data.files) || data.files.length === 0) {
+          throw new Error(data && data.error ? data.error : 'Los metadatos aún se están descubriendo en la red. Inténtalo de nuevo en unos segundos.');
         }
 
         const listDiv = document.getElementById('filesList');
@@ -278,7 +292,7 @@ app.get('/', (req, res) => {
         data.files.forEach((f, idx) => {
           const item = document.createElement('div');
           item.className = 'file-item' + (idx === 0 ? ' selected' : '');
-          item.innerHTML = '<span>[' + f.index + '] ' + f.name + '</span><span class="file-size">' + f.size + '</span>';
+          item.innerHTML = '<span><strong>[' + f.index + ']</strong> ' + f.name + '</span><span class="file-size">' + f.size + '</span>';
           item.onclick = () => {
             document.querySelectorAll('.file-item').forEach(el => el.classList.remove('selected'));
             item.classList.add('selected');
@@ -289,7 +303,7 @@ app.get('/', (req, res) => {
 
         document.getElementById('filesContainer').style.display = 'block';
       } catch (err) {
-        alert('Aviso: ' + err.message + '. Puedes pulsar "Reproducción Directa" para iniciar de inmediato.');
+        alert('Aviso: ' + err.message);
       } finally {
         btn.innerText = '🔍 Inspeccionar Archivos';
         btn.disabled = false;
@@ -308,13 +322,20 @@ app.get('/', (req, res) => {
       const streamUrl = window.location.origin + '/stream?magnet=' + encodeURIComponent(currentMagnet) + '&select=' + selectedFileIndex;
       const playerContainer = document.getElementById('playerContainer');
       const video = document.getElementById('videoPlayer');
-      const vlcLink = document.getElementById('vlcLink');
+      const vlcInput = document.getElementById('vlcInput');
 
       video.src = streamUrl;
-      vlcLink.href = streamUrl;
-      vlcLink.innerText = streamUrl;
+      vlcInput.value = streamUrl;
       playerContainer.style.display = 'block';
-      video.play().catch(e => console.log('Autoplay:', e));
+      video.play().catch(e => console.log('Aviso de reproducción:', e));
+    }
+
+    function copyStreamUrl() {
+      const vlcInput = document.getElementById('vlcInput');
+      vlcInput.select();
+      navigator.clipboard.writeText(vlcInput.value).then(() => {
+        alert('✅ ¡URL copiada al portapapeles! Pégala en VLC o en tu reproductor.');
+      });
     }
   </script>
 </body>
