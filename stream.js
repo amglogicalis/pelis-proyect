@@ -218,26 +218,40 @@ async function uploadToRolla(filePath, fileName, ball) {
 // Ejecutar streaming o descarga
 async function main() {
   try {
-    const meta = await inspectTorrent(magnet);
-    console.log(`\n🎥 Torrent: ${meta.name} (Total: ${formatBytes(meta.totalLength)})`);
+    const binPath = path.join(__dirname, 'node_modules', '.bin', process.platform === 'win32' ? 'webtorrent.cmd' : 'webtorrent');
+    const executable = fs.existsSync(binPath) ? binPath : 'webtorrent';
 
     if (isListOnly) {
-      console.log('\n📦 Lista de archivos:');
-      meta.files.forEach(f => console.log(`  [${f.index}] ${f.name} (${f.sizeFormatted})`));
-      cleanup();
-      process.exit(0);
+      console.log('🔍 Consultando lista de archivos con webtorrent...');
+      const listProc = spawn(executable, [magnet, '--list'], {
+        stdio: 'inherit',
+        shell: process.platform === 'win32'
+      });
+      listProc.on('close', (code) => {
+        cleanup();
+        process.exit(code || 0);
+      });
+      return;
     }
 
     let selectedIndex = selectArg;
-    if (selectedIndex === null) {
-      if (meta.files.length === 1) {
-        selectedIndex = '0';
-      } else {
-        selectedIndex = await promptUserSelection(meta.files);
+    let chosenFile = null;
+
+    if (selectedIndex === null && !isRolla && !isDrive) {
+      try {
+        const meta = await inspectTorrent(magnet);
+        console.log(`\n🎥 Torrent: ${meta.name} (Total: ${formatBytes(meta.totalLength)})`);
+        if (meta.files.length === 1) {
+          selectedIndex = '0';
+        } else {
+          selectedIndex = await promptUserSelection(meta.files);
+        }
+        chosenFile = selectedIndex !== 'all' ? meta.files[parseInt(selectedIndex, 10)] : null;
+      } catch {
+        // Fallback directo a webtorrent si la pre-inspección falla
+        selectedIndex = null;
       }
     }
-
-    const chosenFile = selectedIndex !== 'all' ? meta.files[parseInt(selectedIndex, 10)] : null;
     if (chosenFile) {
       console.log(`\n▶️ Seleccionado: [${chosenFile.index}] ${chosenFile.name} (${chosenFile.sizeFormatted})`);
     }
