@@ -218,11 +218,36 @@ async function uploadToRolla(filePath, fileName, ball) {
     const fileBuffer = fs.readFileSync(filePath);
     await rolla.createBall(ball);
     await rolla.putObject(ball, fileName, fileBuffer);
+
     console.log(`✅ ¡Archivo subido con éxito a Rolla-Ball "${ball}"!`);
     console.log(`📦 Objeto: ${fileName} (${formatBytes(fileBuffer.length)})`);
   } catch (err) {
     console.error('❌ Error durante la subida a Rolla:', err.message);
   }
+}
+
+// Subida a Google Drive mediante Rclone
+async function uploadToDrive(filePath, fileName) {
+  console.log(`\n☁️ Subiendo "${fileName}" a Google Drive vía Rclone...`);
+  return new Promise((resolve) => {
+    const rcloneProc = spawn('rclone', ['copy', filePath, 'gdrive:Pelis-Stream', '--progress'], {
+      stdio: 'inherit',
+      shell: process.platform === 'win32'
+    });
+    rcloneProc.on('error', (err) => {
+      console.error('\n❌ No se pudo ejecutar rclone:', err.message);
+      console.log('💡 Asegúrate de tener instalado rclone y configurado con: rclone config');
+      resolve();
+    });
+    rcloneProc.on('close', (code) => {
+      if (code === 0) {
+        console.log(`\n✅ ¡Archivo subido con éxito a Google Drive en la carpeta "Pelis-Stream"!`);
+      } else {
+        console.error(`\n❌ Rclone finalizó con código de salida ${code}`);
+      }
+      resolve();
+    });
+  });
 }
 
 // Ejecutar streaming o descarga
@@ -289,6 +314,10 @@ async function main() {
           if (isRolla) {
             const targetFile = chosenFile ? path.join(tempDir, chosenFile.name) : path.join(tempDir, torrent.files[0].name);
             await uploadToRolla(targetFile, chosenFile ? chosenFile.name : torrent.files[0].name, ballName);
+          }
+          if (isDrive) {
+            const targetFile = chosenFile ? path.join(tempDir, chosenFile.name) : path.join(tempDir, torrent.files[0].name);
+            await uploadToDrive(targetFile, chosenFile ? chosenFile.name : torrent.files[0].name);
           }
           client.destroy(() => {
             cleanup();
