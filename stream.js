@@ -218,14 +218,15 @@ async function uploadToRolla(filePath, fileName, ball) {
 // Ejecutar streaming o descarga
 async function main() {
   try {
-    const binPath = path.join(__dirname, 'node_modules', '.bin', process.platform === 'win32' ? 'webtorrent.cmd' : 'webtorrent');
-    const executable = fs.existsSync(binPath) ? binPath : 'webtorrent';
+    const cmdJsPath = path.join(__dirname, 'node_modules', 'webtorrent-cli', 'bin', 'cmd.js');
+    const runner = fs.existsSync(cmdJsPath) ? process.execPath : 'webtorrent';
+    const baseArgs = fs.existsSync(cmdJsPath) ? [cmdJsPath] : [];
 
     if (isListOnly) {
       console.log('🔍 Consultando lista de archivos con webtorrent...');
-      const listProc = spawn(executable, [magnet, '--list'], {
+      const listProc = spawn(runner, [...baseArgs, magnet, '--list'], {
         stdio: 'inherit',
-        shell: process.platform === 'win32'
+        shell: false
       });
       listProc.on('close', (code) => {
         cleanup();
@@ -291,7 +292,7 @@ async function main() {
     }
 
     // Modo Streaming HTTP en vivo
-    const execArgs = [magnet, '--out', tempDir];
+    const execArgs = [...baseArgs, magnet, '--out', tempDir];
 
     if (selectedIndex !== 'all') {
       execArgs.push('--select', selectedIndex);
@@ -311,9 +312,9 @@ async function main() {
     }
     console.log('--------------------------------------------------\n');
 
-    const child = spawn(executable, execArgs, {
+    const child = spawn(runner, execArgs, {
       stdio: 'inherit',
-      shell: process.platform === 'win32'
+      shell: false
     });
 
     child.on('close', (code) => {
