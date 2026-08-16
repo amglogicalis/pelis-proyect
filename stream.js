@@ -291,9 +291,6 @@ async function main() {
     }
 
     // Modo Streaming HTTP en vivo
-    const binPath = path.join(__dirname, 'node_modules', '.bin', process.platform === 'win32' ? 'webtorrent.cmd' : 'webtorrent');
-    const executable = fs.existsSync(binPath) ? binPath : 'webtorrent';
-
     const execArgs = [magnet, '--out', tempDir];
 
     if (selectedIndex !== 'all') {
