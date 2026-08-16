@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "node stream.js",
-    "server": "node server.js"
+    "server": "node server.js",
+    "postinstall": "node patch-deps.js"
   },
   "keywords": [
     "torrent",

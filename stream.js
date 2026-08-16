@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+require('./patch-deps.js');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -120,6 +121,15 @@ process.on('SIGINT', () => { cleanup(); process.exit(0); });
 process.on('SIGTERM', () => { cleanup(); process.exit(0); });
 process.on('exit', () => cleanup());
 
+const DEFAULT_ANNOUNCE = [
+  'udp://tracker.opentrackr.org:1337/announce',
+  'udp://open.stealth.si:80/announce',
+  'udp://tracker.torrent.eu.org:451/announce',
+  'udp://explodie.org:6969/announce',
+  'wss://tracker.openwebtorrent.com',
+  'wss://tracker.btorrent.xyz'
+];
+
 // Pre-inspección de metadatos del torrent
 async function inspectTorrent(torrentId) {
   const WT = await getWebTorrent();
@@ -130,9 +140,9 @@ async function inspectTorrent(torrentId) {
     const timeout = setTimeout(() => {
       client.destroy();
       reject(new Error('Tiempo de espera agotado buscando metadatos del torrent.'));
-    }, 25000);
+    }, 30000);
 
-    client.add(torrentId, { path: tempDir }, (torrent) => {
+    client.add(torrentId, { path: tempDir, announce: DEFAULT_ANNOUNCE }, (torrent) => {
       clearTimeout(timeout);
       const filesInfo = torrent.files.map((file, idx) => ({
         index: idx,
@@ -223,16 +233,14 @@ async function main() {
     const baseArgs = fs.existsSync(cmdJsPath) ? [cmdJsPath] : [];
 
     if (isListOnly) {
-      console.log('🔍 Consultando lista de archivos con webtorrent...');
-      const listProc = spawn(runner, [...baseArgs, magnet, '--list'], {
-        stdio: 'inherit',
-        shell: false
-      });
-      listProc.on('close', (code) => {
-        cleanup();
-        process.exit(code || 0);
-      });
-      return;
+      const meta = await inspectTorrent(magnet);
+      console.log(`\n🎥 Torrent: ${meta.name} (Total: ${formatBytes(meta.totalLength)})`);
+      console.log('\n📦 Lista de archivos disponibles:');
+      console.log('--------------------------------------------------');
+      meta.files.forEach(f => console.log(`  [${f.index}] ${f.name} (${f.sizeFormatted})`));
+      console.log('--------------------------------------------------');
+      cleanup();
+      process.exit(0);
     }
 
     let selectedIndex = selectArg;
@@ -248,8 +256,8 @@ async function main() {
           selectedIndex = await promptUserSelection(meta.files);
         }
         chosenFile = selectedIndex !== 'all' ? meta.files[parseInt(selectedIndex, 10)] : null;
-      } catch {
-        // Fallback directo a webtorrent si la pre-inspección falla
+      } catch (err) {
+        console.log('⚠️ No se pudieron obtener los metadatos previos. Iniciando conexión directa...');
         selectedIndex = null;
       }
     }
