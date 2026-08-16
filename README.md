@@ -9,7 +9,7 @@ Descarga y sirve contenido en tiempo real por HTTP directamente a tu reproductor
 
 1. Clona el repositorio:
    ```bash
-   git clone <URL_DEL_REPOSITORIO>
+   git clone https://github.com/amglogicalis/pelis-proyect.git
    cd pelis-proyect
    ```
 
@@ -41,7 +41,7 @@ node stream.js "<MAGNET_LINK>"
    ```
 2. Clona el repo e instala dependencias:
    ```bash
-   git clone <URL_DEL_REPOSITORIO>
+   git clone https://github.com/amglogicalis/pelis-proyect.git
    cd pelis-proyect
    npm install
    ```
