@@ -57,6 +57,27 @@ function formatTorrentInfo(torrent) {
   };
 }
 
+function getOrAddTorrent(wtClient, magnet, callback) {
+  let torrent = wtClient.get(magnet);
+  if (torrent && torrent.files && torrent.files.length > 0) {
+    return callback(null, torrent);
+  }
+
+  if (torrent) {
+    if (typeof torrent.on === 'function') {
+      torrent.on('ready', () => callback(null, torrent));
+      torrent.on('error', (err) => callback(err));
+    } else {
+      callback(null, torrent);
+    }
+    return;
+  }
+
+  wtClient.add(magnet, { store: MemoryChunkStore, announce: DEFAULT_ANNOUNCE }, (t) => {
+    callback(null, t);
+  });
+}
+
 // Endpoint para inspeccionar archivos del torrent
 app.get('/api/info', async (req, res) => {
   const { magnet } = req.query;
@@ -66,35 +87,24 @@ app.get('/api/info', async (req, res) => {
 
   try {
     const wtClient = await getClient();
-    let torrent = wtClient.get(magnet);
+    let responded = false;
 
-    if (torrent && torrent.files && torrent.files.length > 0) {
-      return res.json(formatTorrentInfo(torrent));
-    }
-
-    if (!torrent) {
-      torrent = wtClient.add(magnet, { store: MemoryChunkStore, announce: DEFAULT_ANNOUNCE });
-    }
-
-    const onReady = () => {
-      if (!res.headersSent) res.json(formatTorrentInfo(torrent));
-    };
-
-    if (torrent.files && torrent.files.length > 0) {
-      return onReady();
-    }
-
-    torrent.once('ready', onReady);
-    torrent.once('metadata', onReady);
-    torrent.once('error', (err) => {
-      if (!res.headersSent) res.status(500).json({ error: err.message });
-    });
-
-    setTimeout(() => {
-      if (!res.headersSent) {
+    const timeout = setTimeout(() => {
+      if (!responded) {
+        responded = true;
         res.status(504).json({ error: 'Tiempo de espera agotado buscando metadatos en la red P2P.' });
       }
-    }, 30000);
+    }, 35000);
+
+    getOrAddTorrent(wtClient, magnet, (err, torrent) => {
+      if (responded) return;
+      responded = true;
+      clearTimeout(timeout);
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      res.json(formatTorrentInfo(torrent));
+    });
   } catch (err) {
     if (!res.headersSent) res.status(500).json({ error: err.message });
   }
@@ -109,12 +119,13 @@ app.get('/stream', async (req, res) => {
 
   try {
     const wtClient = await getClient();
-    let torrent = wtClient.get(magnet);
-    if (!torrent) {
-      torrent = wtClient.add(magnet, { store: MemoryChunkStore, announce: DEFAULT_ANNOUNCE });
-    }
 
-    const startStream = () => {
+    getOrAddTorrent(wtClient, magnet, (err, torrent) => {
+      if (err) {
+        if (!res.headersSent) res.status(500).send('Error en torrent: ' + err.message);
+        return;
+      }
+
       let fileIndex = parseInt(select, 10);
       if (isNaN(fileIndex) || fileIndex < 0 || fileIndex >= torrent.files.length) {
         let maxLen = 0;
@@ -129,15 +140,18 @@ app.get('/stream', async (req, res) => {
 
       const file = torrent.files[fileIndex];
       if (!file) {
-        return res.status(404).send('Archivo no encontrado');
+        if (!res.headersSent) res.status(404).send('Archivo no encontrado');
+        return;
       }
 
       const range = req.headers.range;
-      const contentType = file.name.endsWith('.mkv') ? 'video/x-matroska' : 'video/mp4';
+      const isMkv = file.name.toLowerCase().endsWith('.mkv');
+      const contentType = isMkv ? 'video/x-matroska' : 'video/mp4';
 
       if (!range) {
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Length', file.length);
+        res.setHeader('Accept-Ranges', 'bytes');
         return file.createReadStream().pipe(res);
       }
 
@@ -155,17 +169,7 @@ app.get('/stream', async (req, res) => {
       });
 
       file.createReadStream({ start, end }).pipe(res);
-    };
-
-    if (torrent.files && torrent.files.length > 0) {
-      startStream();
-    } else {
-      torrent.once('ready', startStream);
-      torrent.once('metadata', startStream);
-      torrent.once('error', (err) => {
-        if (!res.headersSent) res.status(500).send('Error: ' + err.message);
-      });
-    }
+    });
   } catch (err) {
     if (!res.headersSent) res.status(500).send('Error en streaming: ' + err.message);
   }
