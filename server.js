@@ -4,9 +4,19 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const MemoryChunkStore = require('memory-chunk-store');
 
 let WebTorrent = null;
 let client = null;
+
+const DEFAULT_ANNOUNCE = [
+  'udp://tracker.opentrackr.org:1337/announce',
+  'udp://open.stealth.si:80/announce',
+  'udp://tracker.torrent.eu.org:451/announce',
+  'udp://explodie.org:6969/announce',
+  'wss://tracker.openwebtorrent.com',
+  'wss://tracker.btorrent.xyz'
+];
 
 async function getClient() {
   if (!client) {
@@ -25,9 +35,6 @@ function formatBytes(bytes) {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
-
-// Almacén temporal con limpieza
-const activeTorrents = new Map();
 
 // Endpoint para inspeccionar archivos del torrent
 app.get('/api/info', async (req, res) => {
@@ -51,8 +58,7 @@ app.get('/api/info', async (req, res) => {
     });
   }
 
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hf-stream-info-'));
-  wtClient.add(magnet, { path: tempDir }, (torrent) => {
+  wtClient.add(magnet, { store: MemoryChunkStore, announce: DEFAULT_ANNOUNCE }, (torrent) => {
     const files = torrent.files.map((f, idx) => ({
       index: idx,
       name: f.name,
@@ -68,7 +74,7 @@ app.get('/api/info', async (req, res) => {
   });
 });
 
-// Endpoint de Streaming directo HTTP
+// Endpoint de Streaming directo HTTP 100% en RAM
 app.get('/stream', async (req, res) => {
   const { magnet, select } = req.query;
   if (!magnet) {
@@ -80,7 +86,6 @@ app.get('/stream', async (req, res) => {
   const handleTorrentStream = (t) => {
     let fileIndex = parseInt(select, 10);
     if (isNaN(fileIndex) || fileIndex < 0 || fileIndex >= t.files.length) {
-      // Buscar el archivo de vídeo más grande por defecto
       let maxLen = 0;
       fileIndex = 0;
       t.files.forEach((f, idx) => {
@@ -97,8 +102,10 @@ app.get('/stream', async (req, res) => {
     }
 
     const range = req.headers.range;
+    const contentType = file.name.endsWith('.mkv') ? 'video/x-matroska' : 'video/mp4';
+
     if (!range) {
-      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Length', file.length);
       return file.createReadStream().pipe(res);
     }
@@ -113,7 +120,7 @@ app.get('/stream', async (req, res) => {
       'Content-Range': `bytes ${start}-${end}/${total}`,
       'Accept-Ranges': 'bytes',
       'Content-Length': chunksize,
-      'Content-Type': 'video/mp4'
+      'Content-Type': contentType
     });
 
     file.createReadStream({ start, end }).pipe(res);
@@ -122,8 +129,7 @@ app.get('/stream', async (req, res) => {
   if (torrent && torrent.files.length > 0) {
     handleTorrentStream(torrent);
   } else {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hf-stream-data-'));
-    client.add(magnet, { path: tempDir }, (t) => {
+    wtClient.add(magnet, { store: MemoryChunkStore, announce: DEFAULT_ANNOUNCE }, (t) => {
       handleTorrentStream(t);
     });
   }
